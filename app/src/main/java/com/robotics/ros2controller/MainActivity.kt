@@ -1,28 +1,233 @@
 package com.robotics.ros2controller
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.CompassCalibration
+import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.SportsMotorsports
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.robotics.ros2controller.network.RosbridgeClient
+import com.robotics.ros2controller.ui.components.VirtualJoystick
 import com.robotics.ros2controller.ui.theme.ROS2ControllerTheme
+import com.robotics.ros2controller.ui.theme.Reference_HeaderBackground
+import com.robotics.ros2controller.ui.theme.Reference_Text_OnHeader
+import com.robotics.ros2controller.ui.theme.Reference_Text_Secondary
 
 class MainActivity : ComponentActivity() {
+    private val rosClient = RosbridgeClient()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         setContent {
             ROS2ControllerTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    Greeting(
-                        name = "Android",
-                        modifier = Modifier.padding(innerPadding)
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    ROS2AppNavigation(rosClient)
+                }
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        rosClient.disconnect()
+    }
+}
+
+// Navigation Tab Definitions
+sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
+    object Connection : Screen("connection", "Connect", Icons.Default.CompassCalibration)
+    object Teleop : Screen("teleop", "Teleop", Icons.Default.SportsMotorsports)
+    object Nav2 : Screen("nav2", "Nav2 Goal", Icons.Default.Navigation)
+}
+
+@Composable
+fun ROS2AppNavigation(rosClient: RosbridgeClient) {
+    val context = LocalContext.current
+
+    // Connection States
+    var ipAddress by remember { mutableStateOf("10.0.2.2") }
+    var port by remember { mutableStateOf("9090") }
+    var isConnected by remember { mutableStateOf(false) }
+    var isConnecting by remember { mutableStateOf(false) }
+    var statusMessage by remember { mutableStateOf("Ready") }
+
+    // Teleop Settings
+    var linearScale by remember { mutableStateOf("0.5") }
+    var angularScale by remember { mutableStateOf("1.0") }
+
+    // Nav2 Settings
+    var targetX by remember { mutableStateOf("1.0") }
+    var targetY by remember { mutableStateOf("0.5") }
+    var targetYaw by remember { mutableStateOf("0.0") }
+
+    // Selected Page State
+    var currentScreen by remember { mutableStateOf<Screen>(Screen.Connection) }
+
+    // Updated to match the RosbridgeClient callback signature: (status: Boolean, message: String?)
+    LaunchedEffect(Unit) {
+        rosClient.onConnectionStateChanged = { status, msg ->
+            isConnected = status
+            isConnecting = false
+            statusMessage = msg ?: if (status) "Connected" else "Disconnected"
+            Toast.makeText(context, statusMessage, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    Scaffold(
+        bottomBar = {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 8.dp
+            ) {
+                val items = listOf(Screen.Connection, Screen.Teleop, Screen.Nav2)
+                items.forEach { screen ->
+                    NavigationBarItem(
+                        icon = { Icon(screen.icon, contentDescription = screen.title) },
+                        label = { Text(screen.title) },
+                        selected = currentScreen == screen,
+                        onClick = { currentScreen = screen }
+                    )
+                }
+            }
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            // ================= PERSISTENT TOP BLUE HEADER =================
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Reference_HeaderBackground,
+                        MaterialTheme.shapes.extraLarge
+                    )
+                    .padding(bottom = 24.dp, top = 20.dp)
+                    .padding(horizontal = 24.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "ROS 2 HUB",
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Reference_Text_OnHeader
+                    )
+                    Icon(
+                        imageVector = Icons.Default.AccountCircle,
+                        contentDescription = "Profile",
+                        tint = Reference_Text_OnHeader,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Page: ${currentScreen.title}",
+                    fontSize = 14.sp,
+                    color = Reference_Text_OnHeader.copy(alpha = 0.8f)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // CONNECTION BADGE
+                InputChip(
+                    selected = true,
+                    onClick = {},
+                    label = {
+                        Text(
+                            text = when {
+                                isConnecting -> "CONNECTING..."
+                                isConnected -> "SYSTEM CONNECTED"
+                                else -> "BRIDGE DISCONNECTED"
+                            },
+                            color = Color.White,
+                            fontWeight = FontWeight.Medium
+                        )
+                    },
+                    colors = InputChipDefaults.inputChipColors(
+                        selectedContainerColor = when {
+                            isConnecting -> Color(0xFFF59E0B)
+                            isConnected -> Color(0xFF22C55E)
+                            else -> Color(0xFFDC2626)
+                        }
+                    ),
+                    shape = MaterialTheme.shapes.medium
+                )
+            }
+
+            // ================= PAGE CONTENT SWAPPER =================
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                when (currentScreen) {
+                    is Screen.Connection -> ConnectionScreen(
+                        ipAddress = ipAddress,
+                        onIpChange = { ipAddress = it },
+                        port = port,
+                        onPortChange = { port = it },
+                        isConnected = isConnected,
+                        isConnecting = isConnecting,
+                        onConnectClick = {
+                            if (isConnected) {
+                                rosClient.disconnect()
+                            } else {
+                                isConnecting = true
+                                rosClient.connect(ipAddress.trim(), port.trim())
+                            }
+                        }
+                    )
+
+                    is Screen.Teleop -> TeleopScreen(
+                        linearScale = linearScale,
+                        onLinearChange = { linearScale = it },
+                        angularScale = angularScale,
+                        onAngularChange = { angularScale = it },
+                        isConnected = isConnected,
+                        onJoystickMove = { normX, normZ ->
+                            val maxLin = linearScale.toDoubleOrNull() ?: 0.5
+                            val maxAng = angularScale.toDoubleOrNull() ?: 1.0
+                            rosClient.sendCmdVel(normX * maxLin, normZ * maxAng)
+                        }
+                    )
+
+                    is Screen.Nav2 -> Nav2Screen(
+                        targetX = targetX,
+                        onXChange = { targetX = it },
+                        targetY = targetY,
+                        onYChange = { targetY = it },
+                        targetYaw = targetYaw,
+                        onYawChange = { targetYaw = it },
+                        isConnected = isConnected,
+                        onDispatch = {
+                            val x = targetX.toDoubleOrNull() ?: 0.0
+                            val y = targetY.toDoubleOrNull() ?: 0.0
+                            val yaw = targetYaw.toDoubleOrNull() ?: 0.0
+                            rosClient.sendNav2Goal(x, y, yaw)
+                        }
                     )
                 }
             }
@@ -30,18 +235,221 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// ================= PAGE 1: CONNECTION SCREEN =================
 @Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
+fun ConnectionScreen(
+    ipAddress: String,
+    onIpChange: (String) -> Unit,
+    port: String,
+    onPortChange: (String) -> Unit,
+    isConnected: Boolean,
+    isConnecting: Boolean,
+    onConnectClick: () -> Unit
+) {
+    CardStyled(title = "1. Robot Bridge Connection") {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextFieldStyled(
+                value = ipAddress,
+                onValueChange = onIpChange,
+                label = "IP Address",
+                modifier = Modifier.weight(2f)
+            )
+            OutlinedTextFieldStyled(
+                value = port,
+                onValueChange = onPortChange,
+                label = "Port",
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Spacer(modifier = Modifier.height(20.dp))
+        ButtonPrimaryStyled(
+            onClick = onConnectClick,
+            text = when {
+                isConnecting -> "Connecting..."
+                isConnected -> "Disconnect Bridge"
+                else -> "Connect Bridge"
+            },
+            color = if (isConnected) Color(0xFFDC2626) else MaterialTheme.colorScheme.primary,
+            enabled = !isConnecting
+        )
+    }
+}
+
+// ================= PAGE 2: TELEOP SCREEN =================
+@Composable
+fun TeleopScreen(
+    linearScale: String,
+    onLinearChange: (String) -> Unit,
+    angularScale: String,
+    onAngularChange: (String) -> Unit,
+    isConnected: Boolean,
+    onJoystickMove: (Double, Double) -> Unit
+) {
+    CardStyled(
+        title = "2. Teleoperation",
+        subtitle = "/cmd_vel"
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextFieldStyled(
+                value = linearScale,
+                onValueChange = onLinearChange,
+                label = "Max Lin (m/s)",
+                modifier = Modifier.weight(1f)
+            )
+            OutlinedTextFieldStyled(
+                value = angularScale,
+                onValueChange = onAngularChange,
+                label = "Max Ang (rad/s)",
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            VirtualJoystick(
+                size = 280.dp,
+                thumbColor = MaterialTheme.colorScheme.primary
+            ) { normX, normZ ->
+                if (isConnected) {
+                    onJoystickMove(normX, normZ)
+                }
+            }
+        }
+    }
+}
+
+// ================= PAGE 3: NAV2 SCREEN =================
+@Composable
+fun Nav2Screen(
+    targetX: String,
+    onXChange: (String) -> Unit,
+    targetY: String,
+    onYChange: (String) -> Unit,
+    targetYaw: String,
+    onYawChange: (String) -> Unit,
+    isConnected: Boolean,
+    onDispatch: () -> Unit
+) {
+    CardStyled(
+        title = "3. Nav2 Goal Dispatcher",
+        subtitle = "/goal_pose"
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextFieldStyled(
+                value = targetX,
+                onValueChange = onXChange,
+                label = "Target X",
+                modifier = Modifier.weight(1f)
+            )
+            OutlinedTextFieldStyled(
+                value = targetY,
+                onValueChange = onYChange,
+                label = "Target Y",
+                modifier = Modifier.weight(1f)
+            )
+            OutlinedTextFieldStyled(
+                value = targetYaw,
+                onValueChange = onYawChange,
+                label = "Yaw (rad)",
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        ButtonPrimaryStyled(
+            onClick = onDispatch,
+            text = "Dispatch Target Pose",
+            enabled = isConnected
+        )
+    }
+}
+
+// ================= REUSABLE STYLED COMPONENTS =================
+@Composable
+fun CardStyled(
+    title: String,
+    subtitle: String? = null,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = title,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 18.sp,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    fontSize = 12.sp,
+                    color = Reference_Text_Secondary,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            } else {
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+            content()
+        }
+    }
+}
+
+@Composable
+fun OutlinedTextFieldStyled(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        modifier = modifier,
+        singleLine = true,
+        colors = OutlinedTextFieldDefaults.colors(
+            unfocusedBorderColor = MaterialTheme.colorScheme.secondaryContainer,
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedLabelColor = Reference_Text_Secondary,
+            unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+        ),
+        shape = MaterialTheme.shapes.medium
     )
 }
 
-@Preview(showBackground = true)
 @Composable
-fun GreetingPreview() {
-    ROS2ControllerTheme {
-        Greeting("Android")
+fun ButtonPrimaryStyled(
+    onClick: () -> Unit,
+    text: String,
+    color: Color = MaterialTheme.colorScheme.primary,
+    enabled: Boolean = true
+) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        enabled = enabled,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = color,
+            disabledContainerColor = Reference_Text_Secondary.copy(alpha = 0.5f)
+        ),
+        shape = MaterialTheme.shapes.medium,
+        contentPadding = PaddingValues(16.dp)
+    ) {
+        Text(text = text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
     }
 }
