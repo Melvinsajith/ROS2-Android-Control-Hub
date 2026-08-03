@@ -88,8 +88,8 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
     var isConnecting by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf("Ready") }
 
-    // Dialog state for Connection Popup
-    var showConnectionDialog by remember { mutableStateOf(false) }
+    // Dialog state for Connection Popup (DISABLED / COMMENTED OUT)
+    // var showConnectionDialog by remember { mutableStateOf(false) }
 
     // Nav2 Settings
     var targetX by remember { mutableStateOf("1.0") }
@@ -108,13 +108,16 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
         }
     }
 
-    // Auto-check connection when navigating to active control screens
+    // Direct Navigation without popup enforcement
     fun navigateTo(screen: Screen) {
+        /*
         if (!isConnected && screen != Screen.Settings) {
             showConnectionDialog = true
         } else {
             currentScreen = screen
         }
+        */
+        currentScreen = screen
     }
 
     Scaffold(
@@ -192,14 +195,14 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
                 InputChip(
                     selected = true,
                     onClick = {
-                        if (!isConnected) showConnectionDialog = true
+                        // if (!isConnected) showConnectionDialog = true
                     },
                     label = {
                         Text(
                             text = when {
                                 isConnecting -> "CONNECTING..."
                                 isConnected -> "SYSTEM CONNECTED"
-                                else -> "DISCONNECTED (TAP TO CONNECT)"
+                                else -> "BRIDGE DISCONNECTED"
                             },
                             color = Color.White,
                             fontWeight = FontWeight.Medium
@@ -268,7 +271,8 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
         }
     }
 
-    // ================= DISCONNECTED POPUP DIALOG =================
+    /*
+    // ================= DISCONNECTED POPUP DIALOG (DISABLED) =================
     if (showConnectionDialog) {
         AlertDialog(
             onDismissRequest = { showConnectionDialog = false },
@@ -315,6 +319,7 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
             }
         )
     }
+    */
 }
 
 // ================= PAGE: SETTINGS SCREEN =================
