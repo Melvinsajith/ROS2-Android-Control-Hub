@@ -23,7 +23,7 @@ import com.robotics.ros2controller.ui.theme.Reference_Text_Secondary
 fun CameraScreen(
     ipAddress: String,
     isConnected: Boolean,
-    cameraTopic: String = "/camera/image_raw",
+    cameraTopic: String = "/camera/camera_sensor/image_raw", // Default Gazebo camera topic
     streamPort: String = "8080"
 ) {
     var isStreamActive by remember { mutableStateOf(true) }
@@ -59,7 +59,7 @@ fun CameraScreen(
                         )
                     }
 
-                    // Toggle Stream
+                    // Toggle Stream Button
                     IconButton(onClick = { isStreamActive = !isStreamActive }) {
                         Icon(
                             imageVector = if (isStreamActive) Icons.Default.Videocam else Icons.Default.VideocamOff,
@@ -71,7 +71,7 @@ fun CameraScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // MJPEG Video Viewport Box
+                // Continuous MJPEG Stream Viewport
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -91,7 +91,6 @@ fun CameraScreen(
                                     settings.useWideViewPort = true
                                     settings.loadWithOverviewMode = true
                                     setBackgroundColor(android.graphics.Color.BLACK)
-                                    // Raw HTML wrapping to fit the MJPEG stream to view dimensions
                                     val html = "<html><head><style>body{margin:0;padding:0;background-color:black;display:flex;justify-content:center;align-items:center;height:100vh;} img{max-width:100%;max-height:100%;object-fit:contain;}</style></head><body><img src=\"$streamUrl\" /></body></html>"
                                     loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
                                 }
