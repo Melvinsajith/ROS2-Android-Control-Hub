@@ -43,6 +43,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
+    // Coil Image / Stream Loader for Jetpack Compose
+    implementation("io.coil-kt:coil-compose:2.6.0")
 
     implementation(platform("androidx.compose:compose-bom:2024.02.00"))
     implementation("androidx.compose.ui:ui")

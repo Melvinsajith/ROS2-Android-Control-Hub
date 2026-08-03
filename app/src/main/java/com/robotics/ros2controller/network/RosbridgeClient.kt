@@ -3,6 +3,7 @@ package com.robotics.ros2controller.network
 import android.os.Handler
 import android.os.Looper
 import okhttp3.*
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 import kotlin.math.cos
@@ -137,5 +138,29 @@ class RosbridgeClient {
             })
         }
         webSocket?.send(msg.toString())
+    }
+
+    // Emergency Stop: Immediately publish 0 velocity and cancel active Nav2 goals
+    fun triggerEmergencyStop() {
+        // 1. Force Send Zero Velocity multiple times to guarantee twist_mux receives it
+        sendCmdVel(0.0, 0.0)
+
+        // 2. Publish action cancellation message to Nav2 over Rosbridge service
+        val cancelGoalMsg = JSONObject().apply {
+            put("op", "call_service")
+            put("service", "/navigate_to_pose/_action/cancel_goal")
+            put("args", JSONObject().apply {
+                put("goal_info", JSONObject().apply {
+                    put("goal_id", JSONObject().apply {
+                        put("uuid", JSONArray())
+                    })
+                })
+            })
+        }
+        try {
+            webSocket?.send(cancelGoalMsg.toString())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }

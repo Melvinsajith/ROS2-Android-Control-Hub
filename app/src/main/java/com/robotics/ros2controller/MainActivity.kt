@@ -6,11 +6,17 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.CompassCalibration
 import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SportsMotorsports
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,7 +28,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.robotics.ros2controller.network.RosbridgeClient
-import com.robotics.ros2controller.ui.components.VirtualJoystick
+import com.robotics.ros2controller.ui.screens.AdvancedTeleopScreen
+import com.robotics.ros2controller.ui.screens.CameraScreen
 import com.robotics.ros2controller.ui.theme.ROS2ControllerTheme
 import com.robotics.ros2controller.ui.theme.Reference_HeaderBackground
 import com.robotics.ros2controller.ui.theme.Reference_Text_OnHeader
@@ -51,11 +58,23 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// Hospital Locations Dictionary[cite: 9]
+val hospitalLocations = mapOf(
+    "Pharmacy" to listOf(-13.77, -5.23, 0.0),
+    "ICU Ward" to listOf(2.00, -5.61, 0.0),
+    "Emergency/OT" to listOf(4.74, -3.98, 0.0),
+    "Lab Samples" to listOf(-9.48, -4.51, 0.0),
+    "Ward A" to listOf(0.79, 5.22, 0.0),
+    "Ward B" to listOf(-7.86, 5.21, 0.0),
+    "Charging Base" to listOf(0.0, 0.0, 0.0)
+)
+
 // Navigation Tab Definitions
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
-    object Connection : Screen("connection", "Connect", Icons.Default.CompassCalibration)
     object Teleop : Screen("teleop", "Teleop", Icons.Default.SportsMotorsports)
+    object Camera : Screen("camera", "Camera", Icons.Default.Videocam)
     object Nav2 : Screen("nav2", "Nav2 Goal", Icons.Default.Navigation)
+    object Settings : Screen("settings", "Settings", Icons.Default.Settings)
 }
 
 @Composable
@@ -69,9 +88,8 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
     var isConnecting by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf("Ready") }
 
-    // Teleop Settings
-    var linearScale by remember { mutableStateOf("0.5") }
-    var angularScale by remember { mutableStateOf("1.0") }
+    // Dialog state for Connection Popup
+    var showConnectionDialog by remember { mutableStateOf(false) }
 
     // Nav2 Settings
     var targetX by remember { mutableStateOf("1.0") }
@@ -79,9 +97,8 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
     var targetYaw by remember { mutableStateOf("0.0") }
 
     // Selected Page State
-    var currentScreen by remember { mutableStateOf<Screen>(Screen.Connection) }
+    var currentScreen by remember { mutableStateOf<Screen>(Screen.Settings) }
 
-    // Updated to match the RosbridgeClient callback signature: (status: Boolean, message: String?)
     LaunchedEffect(Unit) {
         rosClient.onConnectionStateChanged = { status, msg ->
             isConnected = status
@@ -91,19 +108,28 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
         }
     }
 
+    // Auto-check connection when navigating to active control screens
+    fun navigateTo(screen: Screen) {
+        if (!isConnected && screen != Screen.Settings) {
+            showConnectionDialog = true
+        } else {
+            currentScreen = screen
+        }
+    }
+
     Scaffold(
         bottomBar = {
             NavigationBar(
                 containerColor = MaterialTheme.colorScheme.surface,
                 tonalElevation = 8.dp
             ) {
-                val items = listOf(Screen.Connection, Screen.Teleop, Screen.Nav2)
+                val items = listOf(Screen.Teleop, Screen.Camera, Screen.Nav2, Screen.Settings)
                 items.forEach { screen ->
                     NavigationBarItem(
                         icon = { Icon(screen.icon, contentDescription = screen.title) },
                         label = { Text(screen.title) },
                         selected = currentScreen == screen,
-                        onClick = { currentScreen = screen }
+                        onClick = { navigateTo(screen) }
                     )
                 }
             }
@@ -122,7 +148,7 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
                         Reference_HeaderBackground,
                         MaterialTheme.shapes.extraLarge
                     )
-                    .padding(bottom = 24.dp, top = 20.dp)
+                    .padding(bottom = 20.dp, top = 20.dp)
                     .padding(horizontal = 24.dp)
             ) {
                 Row(
@@ -136,12 +162,23 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
                         fontWeight = FontWeight.Bold,
                         color = Reference_Text_OnHeader
                     )
-                    Icon(
-                        imageVector = Icons.Default.AccountCircle,
-                        contentDescription = "Profile",
-                        tint = Reference_Text_OnHeader,
-                        modifier = Modifier.size(32.dp)
-                    )
+
+                    // Persistent Quick E-STOP Button
+                    IconButton(
+                        onClick = {
+                            rosClient.triggerEmergencyStop()
+                            Toast.makeText(context, "🚨 EMERGENCY STOP TRIGGERED!", Toast.LENGTH_LONG).show()
+                        },
+                        modifier = Modifier
+                            .background(Color(0xFFDC2626), MaterialTheme.shapes.small)
+                            .size(38.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "Quick E-Stop",
+                            tint = Color.White
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
@@ -154,13 +191,15 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
                 // CONNECTION BADGE
                 InputChip(
                     selected = true,
-                    onClick = {},
+                    onClick = {
+                        if (!isConnected) showConnectionDialog = true
+                    },
                     label = {
                         Text(
                             text = when {
                                 isConnecting -> "CONNECTING..."
                                 isConnected -> "SYSTEM CONNECTED"
-                                else -> "BRIDGE DISCONNECTED"
+                                else -> "DISCONNECTED (TAP TO CONNECT)"
                             },
                             color = Color.White,
                             fontWeight = FontWeight.Medium
@@ -184,7 +223,31 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
                     .padding(16.dp)
             ) {
                 when (currentScreen) {
-                    is Screen.Connection -> ConnectionScreen(
+                    is Screen.Teleop -> AdvancedTeleopScreen(
+                        isConnected = isConnected,
+                        onSendCmdVel = { linX, angZ -> rosClient.sendCmdVel(linX, angZ) },
+                        onTriggerEStop = { rosClient.triggerEmergencyStop() }
+                    )
+
+                    is Screen.Camera -> CameraScreen(
+                        ipAddress = ipAddress.trim(),
+                        isConnected = isConnected
+                    )
+
+                    is Screen.Nav2 -> Nav2Screen(
+                        targetX = targetX,
+                        onXChange = { targetX = it },
+                        targetY = targetY,
+                        onYChange = { targetY = it },
+                        targetYaw = targetYaw,
+                        onYawChange = { targetYaw = it },
+                        isConnected = isConnected,
+                        onDispatch = { xVal, yVal, yawVal ->
+                            rosClient.sendNav2Goal(xVal, yVal, yawVal)
+                        }
+                    )
+
+                    is Screen.Settings -> SettingsScreen(
                         ipAddress = ipAddress,
                         onIpChange = { ipAddress = it },
                         port = port,
@@ -200,44 +263,63 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
                             }
                         }
                     )
-
-                    is Screen.Teleop -> TeleopScreen(
-                        linearScale = linearScale,
-                        onLinearChange = { linearScale = it },
-                        angularScale = angularScale,
-                        onAngularChange = { angularScale = it },
-                        isConnected = isConnected,
-                        onJoystickMove = { normX, normZ ->
-                            val maxLin = linearScale.toDoubleOrNull() ?: 0.5
-                            val maxAng = angularScale.toDoubleOrNull() ?: 1.0
-                            rosClient.sendCmdVel(normX * maxLin, normZ * maxAng)
-                        }
-                    )
-
-                    is Screen.Nav2 -> Nav2Screen(
-                        targetX = targetX,
-                        onXChange = { targetX = it },
-                        targetY = targetY,
-                        onYChange = { targetY = it },
-                        targetYaw = targetYaw,
-                        onYawChange = { targetYaw = it },
-                        isConnected = isConnected,
-                        onDispatch = {
-                            val x = targetX.toDoubleOrNull() ?: 0.0
-                            val y = targetY.toDoubleOrNull() ?: 0.0
-                            val yaw = targetYaw.toDoubleOrNull() ?: 0.0
-                            rosClient.sendNav2Goal(x, y, yaw)
-                        }
-                    )
                 }
             }
         }
     }
+
+    // ================= DISCONNECTED POPUP DIALOG =================
+    if (showConnectionDialog) {
+        AlertDialog(
+            onDismissRequest = { showConnectionDialog = false },
+            title = { Text("Robot Disconnected", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Please connect to Rosbridge before operating the robot.")
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextFieldStyled(
+                        value = ipAddress,
+                        onValueChange = { ipAddress = it },
+                        label = "IP Address",
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextFieldStyled(
+                        value = port,
+                        onValueChange = { port = it },
+                        label = "Port",
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showConnectionDialog = false
+                        isConnecting = true
+                        rosClient.connect(ipAddress.trim(), port.trim())
+                    }
+                ) {
+                    Text("Connect Now")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showConnectionDialog = false
+                        currentScreen = Screen.Settings
+                    }
+                ) {
+                    Text("Go to Settings")
+                }
+            }
+        )
+    }
 }
 
-// ================= PAGE 1: CONNECTION SCREEN =================
+// ================= PAGE: SETTINGS SCREEN =================
 @Composable
-fun ConnectionScreen(
+fun SettingsScreen(
     ipAddress: String,
     onIpChange: (String) -> Unit,
     port: String,
@@ -246,86 +328,58 @@ fun ConnectionScreen(
     isConnecting: Boolean,
     onConnectClick: () -> Unit
 ) {
-    CardStyled(title = "1. Robot Bridge Connection") {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            OutlinedTextFieldStyled(
-                value = ipAddress,
-                onValueChange = onIpChange,
-                label = "IP Address",
-                modifier = Modifier.weight(2f)
-            )
-            OutlinedTextFieldStyled(
-                value = port,
-                onValueChange = onPortChange,
-                label = "Port",
-                modifier = Modifier.weight(1f)
-            )
-        }
-        Spacer(modifier = Modifier.height(20.dp))
-        ButtonPrimaryStyled(
-            onClick = onConnectClick,
-            text = when {
-                isConnecting -> "Connecting..."
-                isConnected -> "Disconnect Bridge"
-                else -> "Connect Bridge"
-            },
-            color = if (isConnected) Color(0xFFDC2626) else MaterialTheme.colorScheme.primary,
-            enabled = !isConnecting
-        )
-    }
-}
-
-// ================= PAGE 2: TELEOP SCREEN =================
-@Composable
-fun TeleopScreen(
-    linearScale: String,
-    onLinearChange: (String) -> Unit,
-    angularScale: String,
-    onAngularChange: (String) -> Unit,
-    isConnected: Boolean,
-    onJoystickMove: (Double, Double) -> Unit
-) {
-    CardStyled(
-        title = "2. Teleoperation",
-        subtitle = "/cmd_vel"
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextFieldStyled(
-                value = linearScale,
-                onValueChange = onLinearChange,
-                label = "Max Lin (m/s)",
-                modifier = Modifier.weight(1f)
-            )
-            OutlinedTextFieldStyled(
-                value = angularScale,
-                onValueChange = onAngularChange,
-                label = "Max Ang (rad/s)",
-                modifier = Modifier.weight(1f)
+        // Section 1: Connection Config
+        CardStyled(title = "Robot Bridge Connection") {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextFieldStyled(
+                    value = ipAddress,
+                    onValueChange = onIpChange,
+                    label = "IP Address",
+                    modifier = Modifier.weight(2f)
+                )
+                OutlinedTextFieldStyled(
+                    value = port,
+                    onValueChange = onPortChange,
+                    label = "Port",
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(modifier = Modifier.height(20.dp))
+            ButtonPrimaryStyled(
+                onClick = onConnectClick,
+                text = when {
+                    isConnecting -> "Connecting..."
+                    isConnected -> "Disconnect Bridge"
+                    else -> "Connect Bridge"
+                },
+                color = if (isConnected) Color(0xFFDC2626) else MaterialTheme.colorScheme.primary,
+                enabled = !isConnecting
             )
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
-
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            VirtualJoystick(
-                size = 280.dp,
-                thumbColor = MaterialTheme.colorScheme.primary
-            ) { normX, normZ ->
-                if (isConnected) {
-                    onJoystickMove(normX, normZ)
-                }
-            }
+        // Section 2: General Robot Parameters
+        CardStyled(title = "ROS 2 Environment Config") {
+            Text("Default Frame ID: map", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Teleop Topic: /cmd_vel", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Nav Goal Topic: /goal_pose", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Camera Feed Port: 8080 (web_video_server)", fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
 
-// ================= PAGE 3: NAV2 SCREEN =================
+// ================= PAGE: NAV2 SCREEN =================
 @Composable
 fun Nav2Screen(
     targetX: String,
@@ -335,40 +389,88 @@ fun Nav2Screen(
     targetYaw: String,
     onYawChange: (String) -> Unit,
     isConnected: Boolean,
-    onDispatch: () -> Unit
+    onDispatch: (Double, Double, Double) -> Unit
 ) {
-    CardStyled(
-        title = "3. Nav2 Goal Dispatcher",
-        subtitle = "/goal_pose"
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextFieldStyled(
-                value = targetX,
-                onValueChange = onXChange,
-                label = "Target X",
-                modifier = Modifier.weight(1f)
-            )
-            OutlinedTextFieldStyled(
-                value = targetY,
-                onValueChange = onYChange,
-                label = "Target Y",
-                modifier = Modifier.weight(1f)
-            )
-            OutlinedTextFieldStyled(
-                value = targetYaw,
-                onValueChange = onYawChange,
-                label = "Yaw (rad)",
-                modifier = Modifier.weight(1f)
-            )
+        CardStyled(
+            title = "Hospital Destinations",
+            subtitle = "Tap to dispatch automatically"
+        ) {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp)
+            ) {
+                items(hospitalLocations.keys.toList()) { locName ->
+                    val coords = hospitalLocations[locName]!!
+                    OutlinedButton(
+                        onClick = {
+                            onXChange(coords[0].toString())
+                            onYChange(coords[1].toString())
+                            onYawChange(coords[2].toString())
+                            if (isConnected) {
+                                onDispatch(coords[0], coords[1], coords[2])
+                            }
+                        },
+                        enabled = isConnected,
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Text(
+                            text = locName,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        CardStyled(
+            title = "Custom Pose Dispatcher",
+            subtitle = "/goal_pose"
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextFieldStyled(
+                    value = targetX,
+                    onValueChange = onXChange,
+                    label = "Target X",
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextFieldStyled(
+                    value = targetY,
+                    onValueChange = onYChange,
+                    label = "Target Y",
+                    modifier = Modifier.weight(1f)
+                )
+                OutlinedTextFieldStyled(
+                    value = targetYaw,
+                    onValueChange = onYawChange,
+                    label = "Yaw (rad)",
+                    modifier = Modifier.weight(1f)
+                )
+            }
 
-        ButtonPrimaryStyled(
-            onClick = onDispatch,
-            text = "Dispatch Target Pose",
-            enabled = isConnected
-        )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            ButtonPrimaryStyled(
+                onClick = {
+                    val x = targetX.toDoubleOrNull() ?: 0.0
+                    val y = targetY.toDoubleOrNull() ?: 0.0
+                    val yaw = targetYaw.toDoubleOrNull() ?: 0.0
+                    onDispatch(x, y, yaw)
+                },
+                text = "Dispatch Custom Pose",
+                enabled = isConnected
+            )
+        }
     }
 }
 
