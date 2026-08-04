@@ -1,52 +1,36 @@
 package com.robotics.ros2controller.ui.theme
 
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
 
-// Reference image color palette
-val Reference_HeaderBackground = Color(0xFF1E2F9F) // Deep Blue header
-val Reference_MainBackground = Color(0xFFF0F2FB) // Soft Light Gray/Blue background
-val Reference_CardBackground = Color(0xFFFFFFFF) // White cards
-val Reference_ActionPrimary = Color(0xFF233FFD) // Bright Blue for active buttons
+val Reference_HeaderBackground = Color(0xFF4F46E5) // Deep Indigo / Violet Accent
 val Reference_Text_OnHeader = Color(0xFFFFFFFF)
-val Reference_Text_Primary = Color(0xFF111111)
-val Reference_Text_Secondary = Color(0xFF888888)
-
-// Custom shapes derived from the image
-val Reference_Shapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(24.dp), // For main header/card
-    extraLarge = RoundedCornerShape(32.dp) // The top deep-blue header shape
-)
+val Reference_Text_Secondary = Color(0xFF64748B)
 
 private val LightColorScheme = lightColorScheme(
-    primary = Reference_ActionPrimary,
-    background = Reference_MainBackground,
-    surface = Reference_CardBackground,
-    onPrimary = Color.White,
-    onBackground = Reference_Text_Primary,
-    onSurface = Reference_Text_Primary,
-    secondaryContainer = Color(0xFFE0E7FF), // for badge backgrounds
-    onSecondaryContainer = Reference_ActionPrimary // for badge text
+    primary = Color(0xFF4F46E5),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFEEF2FF),
+    onPrimaryContainer = Color(0xFF312E81),
+    secondary = Color(0xFF3B82F6),
+    onSecondary = Color(0xFFFFFFFF),
+    background = Color(0xFFF1F5F9), // Clean soft light gray-blue background
+    onBackground = Color(0xFF0F172A),
+    surface = Color(0xFFFFFFFF),
+    onSurface = Color(0xFF0F172A),
+    surfaceVariant = Color(0xFFE2E8F0),
+    onSurfaceVariant = Color(0xFF475569)
 )
 
 @Composable
 fun ROS2ControllerTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // For this design, we ignore system dark theme and use the light/neumorphic reference style
     content: @Composable () -> Unit
 ) {
     MaterialTheme(
         colorScheme = LightColorScheme,
         typography = Typography,
-        shapes = Reference_Shapes,
         content = content
     )
 }

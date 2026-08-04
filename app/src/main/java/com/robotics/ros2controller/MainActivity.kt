@@ -6,16 +6,18 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SportsMotorsports
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -29,13 +31,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.robotics.ros2controller.network.RosbridgeClient
+import com.robotics.ros2controller.ui.components.InteractiveMapCanvas
 import com.robotics.ros2controller.ui.screens.AdvancedTeleopScreen
 import com.robotics.ros2controller.ui.screens.CameraScreen
 import com.robotics.ros2controller.ui.screens.UnifiedDashboardScreen
 import com.robotics.ros2controller.ui.theme.ROS2ControllerTheme
-import com.robotics.ros2controller.ui.theme.Reference_HeaderBackground
-import com.robotics.ros2controller.ui.theme.Reference_Text_OnHeader
-import com.robotics.ros2controller.ui.theme.Reference_Text_Secondary
 
 class MainActivity : ComponentActivity() {
     private val rosClient = RosbridgeClient()
@@ -46,7 +46,7 @@ class MainActivity : ComponentActivity() {
             ROS2ControllerTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = Color(0xFF090D16) // Deep Dark Outer Slate Background
                 ) {
                     ROS2AppNavigation(rosClient)
                 }
@@ -60,7 +60,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// Hospital Locations Dictionary
+// Hospital Locations Registry
 val hospitalLocations = mapOf(
     "Pharmacy" to listOf(-13.77, -5.23, 0.0),
     "ICU Ward" to listOf(2.00, -5.61, 0.0),
@@ -71,10 +71,10 @@ val hospitalLocations = mapOf(
     "Charging Base" to listOf(0.0, 0.0, 0.0)
 )
 
-// Navigation Tab Definitions
+// App Navigation Routes
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
     object Dashboard : Screen("dashboard", "Dashboard", Icons.Default.Dashboard)
-    object Teleop : Screen("teleop", "Teleop", Icons.Default.SportsMotorsports)
+    object Teleop : Screen("teleop", "Teleop", Icons.Default.SportsEsports)
     object Camera : Screen("camera", "Camera", Icons.Default.Videocam)
     object Nav2 : Screen("nav2", "Nav2 Goal", Icons.Default.Navigation)
     object Settings : Screen("settings", "Settings", Icons.Default.Settings)
@@ -91,12 +91,11 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
     var isConnecting by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf("Ready") }
 
-    // Nav2 Settings
+    // Nav2 State
     var targetX by remember { mutableStateOf("1.0") }
     var targetY by remember { mutableStateOf("0.5") }
     var targetYaw by remember { mutableStateOf("0.0") }
 
-    // Selected Page State (Defaults to Tactical Dashboard)
     var currentScreen by remember { mutableStateOf<Screen>(Screen.Dashboard) }
 
     LaunchedEffect(Unit) {
@@ -108,15 +107,13 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
         }
     }
 
-    fun navigateTo(screen: Screen) {
-        currentScreen = screen
-    }
-
     Scaffold(
+        containerColor = Color(0xFF090D16),
         bottomBar = {
             NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp
+                containerColor = Color(0xFF131C2E),
+                tonalElevation = 12.dp,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
                 val items = listOf(
                     Screen.Dashboard,
@@ -126,11 +123,28 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
                     Screen.Settings
                 )
                 items.forEach { screen ->
+                    val selected = currentScreen == screen
                     NavigationBarItem(
-                        icon = { Icon(screen.icon, contentDescription = screen.title) },
-                        label = { Text(screen.title) },
-                        selected = currentScreen == screen,
-                        onClick = { navigateTo(screen) }
+                        icon = {
+                            Icon(
+                                screen.icon,
+                                contentDescription = screen.title,
+                                tint = if (selected) Color(0xFF38BDF8) else Color(0xFF64748B)
+                            )
+                        },
+                        label = {
+                            Text(
+                                screen.title,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 11.sp,
+                                color = if (selected) Color(0xFF38BDF8) else Color(0xFF64748B)
+                            )
+                        },
+                        selected = selected,
+                        onClick = { currentScreen = screen },
+                        colors = NavigationBarItemDefaults.colors(
+                            indicatorColor = Color(0xFF1E293B)
+                        )
                     )
                 }
             }
@@ -141,85 +155,93 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // ================= PERSISTENT TOP BLUE HEADER =================
-            Column(
+            // ================= DARK TOP VIOLET/BLUE HEADER CARD =================
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(
-                        Reference_HeaderBackground,
-                        MaterialTheme.shapes.extraLarge
-                    )
-                    .padding(bottom = 20.dp, top = 20.dp)
-                    .padding(horizontal = 24.dp)
+                    .padding(12.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF131C2E)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp)
                 ) {
-                    Text(
-                        text = "ROS 2 HUB",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Reference_Text_OnHeader
-                    )
-
-                    // Persistent Quick E-STOP Button
-                    IconButton(
-                        onClick = {
-                            rosClient.triggerEmergencyStop()
-                            Toast.makeText(context, "🚨 EMERGENCY STOP TRIGGERED!", Toast.LENGTH_LONG).show()
-                        },
-                        modifier = Modifier
-                            .background(Color(0xFFDC2626), MaterialTheme.shapes.small)
-                            .size(38.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Warning,
-                            contentDescription = "Quick E-Stop",
-                            tint = Color.White
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Page: ${currentScreen.title}",
-                    fontSize = 14.sp,
-                    color = Reference_Text_OnHeader.copy(alpha = 0.8f)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // CONNECTION BADGE
-                InputChip(
-                    selected = true,
-                    onClick = {},
-                    label = {
-                        Text(
-                            text = when {
-                                isConnecting -> "CONNECTING..."
-                                isConnected -> "SYSTEM CONNECTED"
-                                else -> "BRIDGE DISCONNECTED"
-                            },
-                            color = Color.White,
-                            fontWeight = FontWeight.Medium
-                        )
-                    },
-                    colors = InputChipDefaults.inputChipColors(
-                        selectedContainerColor = when {
-                            isConnecting -> Color(0xFFF59E0B)
-                            isConnected -> Color(0xFF22C55E)
-                            else -> Color(0xFFDC2626)
+                        Column {
+                            Text(
+                                text = "DIO ROBOT CONNECT",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = "Page: ${currentScreen.title}",
+                                fontSize = 12.sp,
+                                color = Color(0xFF94A3B8)
+                            )
                         }
-                    ),
-                    shape = MaterialTheme.shapes.medium
-                )
+
+                        // Quick E-Stop Button
+                        IconButton(
+                            onClick = {
+                                rosClient.triggerEmergencyStop()
+                                Toast.makeText(context, "🚨 EMERGENCY STOP!", Toast.LENGTH_LONG).show()
+                            },
+                            modifier = Modifier
+                                .background(Color(0xFFDC2626), RoundedCornerShape(12.dp))
+                                .size(40.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = "E-Stop",
+                                tint = Color.White
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Status Badge
+                    AssistChip(
+                        onClick = {},
+                        label = {
+                            Text(
+                                text = when {
+                                    isConnecting -> "CONNECTING TO DIO..."
+                                    isConnected -> "SYSTEM CONNECTED"
+                                    else -> "BRIDGE DISCONNECTED"
+                                },
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            )
+                        },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = when {
+                                isConnecting -> Color(0xFFD97706)
+                                isConnected -> Color(0xFF10B981)
+                                else -> Color(0xFFDC2626)
+                            }
+                        ),
+                        border = null,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
             }
 
-            // ================= PAGE CONTENT SWAPPER =================
+            // ================= PAGE VIEW SWITCHER =================
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(16.dp)
+                    .padding(horizontal = 12.dp)
             ) {
                 when (currentScreen) {
                     is Screen.Dashboard -> UnifiedDashboardScreen(
@@ -263,6 +285,18 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
                         targetYaw = targetYaw,
                         onYawChange = { targetYaw = it },
                         isConnected = isConnected,
+                        robotX = rosClient.robotX,
+                        robotY = rosClient.robotY,
+                        robotYaw = rosClient.robotYaw,
+                        globalPath = rosClient.globalPath,
+                        mapWidth = rosClient.mapWidth,
+                        mapHeight = rosClient.mapHeight,
+                        mapData = rosClient.mapData,
+                        mapResolution = rosClient.mapResolution,
+                        mapOriginX = rosClient.mapOriginX,
+                        mapOriginY = rosClient.mapOriginY,
+                        taskStatus = rosClient.taskStatus,
+                        destinationName = rosClient.currentDestinationName,
                         onDispatch = { xVal, yVal, yawVal, destName ->
                             rosClient.sendNav2Goal(xVal, yVal, yawVal, destName)
                         }
@@ -290,7 +324,180 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
     }
 }
 
-// ================= PAGE: SETTINGS SCREEN =================
+// ================= NAV2 GOAL SCREEN (FULL DARK THEME) =================
+@Composable
+fun Nav2Screen(
+    targetX: String,
+    onXChange: (String) -> Unit,
+    targetY: String,
+    onYChange: (String) -> Unit,
+    targetYaw: String,
+    onYawChange: (String) -> Unit,
+    isConnected: Boolean,
+    robotX: Double,
+    robotY: Double,
+    robotYaw: Double,
+    globalPath: List<Pair<Double, Double>>,
+    mapWidth: Int,
+    mapHeight: Int,
+    mapData: IntArray?,
+    mapResolution: Double,
+    mapOriginX: Double,
+    mapOriginY: Double,
+    taskStatus: String,
+    destinationName: String,
+    onDispatch: (Double, Double, Double, String) -> Unit
+) {
+    var selectedLocation by remember { mutableStateOf(hospitalLocations.keys.first()) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Mission Task Status Banner
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = when {
+                    taskStatus.contains("Reached") -> Color(0xFF10B981)
+                    taskStatus.contains("En Route") || taskStatus.contains("Received") -> Color(0xFF0284C7)
+                    taskStatus.contains("Dispatched") -> Color(0xFFD97706)
+                    taskStatus.contains("STOP") || taskStatus.contains("Aborted") -> Color(0xFFDC2626)
+                    else -> Color(0xFF1E293B)
+                }
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = if (destinationName.isNotEmpty()) "Target Station: $destinationName" else "DIO Navigation Controller",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                    Text(
+                        text = "Status: $taskStatus",
+                        color = Color.White.copy(alpha = 0.9f),
+                        fontSize = 12.sp
+                    )
+                }
+                Icon(Icons.Default.Navigation, contentDescription = null, tint = Color.White)
+            }
+        }
+
+        // Live Interactive Occupancy Grid Map
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(290.dp),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A))
+        ) {
+            Box(modifier = Modifier.fillMaxSize().padding(10.dp)) {
+                Text(
+                    text = "Live Map | Pose: (${"%.2f".format(robotX)}, ${"%.2f".format(robotY)})",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp
+                )
+
+                InteractiveMapCanvas(
+                    robotX = robotX,
+                    robotY = robotY,
+                    robotYaw = robotYaw,
+                    globalPath = globalPath,
+                    mapWidth = mapWidth,
+                    mapHeight = mapHeight,
+                    mapData = mapData,
+                    mapResolution = mapResolution,
+                    mapOriginX = mapOriginX,
+                    mapOriginY = mapOriginY,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = 22.dp)
+                )
+            }
+        }
+
+        // Horizontal Station Waypoint Carousel
+        DarkCardStyled(
+            title = "Station Waypoints",
+            subtitle = "Swipe and select a location"
+        ) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(hospitalLocations.keys.toList()) { locName ->
+                    val coords = hospitalLocations[locName]!!
+                    val isSelected = locName == selectedLocation
+
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = {
+                            selectedLocation = locName
+                            onXChange(coords[0].toString())
+                            onYChange(coords[1].toString())
+                            onYawChange(coords[2].toString())
+                            if (isConnected) {
+                                onDispatch(coords[0], coords[1], coords[2], locName)
+                            }
+                        },
+                        label = { Text(locName, fontWeight = FontWeight.Bold, fontSize = 12.sp) },
+                        leadingIcon = {
+                            Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp))
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(0xFF0284C7),
+                            selectedLabelColor = Color.White,
+                            selectedLeadingIconColor = Color.White,
+                            containerColor = Color(0xFF0F172A),
+                            labelColor = Color(0xFF94A3B8),
+                            iconColor = Color(0xFF64748B)
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            }
+        }
+
+        // Manual Target Pose Dispatcher
+        DarkCardStyled(
+            title = "Custom Pose Dispatcher",
+            subtitle = "Publish target pose to /goal_pose"
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DarkOutlinedTextField(value = targetX, onValueChange = onXChange, label = "Target X", modifier = Modifier.weight(1f))
+                DarkOutlinedTextField(value = targetY, onValueChange = onYChange, label = "Target Y", modifier = Modifier.weight(1f))
+                DarkOutlinedTextField(value = targetYaw, onValueChange = onYawChange, label = "Yaw (rad)", modifier = Modifier.weight(1f))
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            DarkPrimaryButton(
+                onClick = {
+                    val x = targetX.toDoubleOrNull() ?: 0.0
+                    val y = targetY.toDoubleOrNull() ?: 0.0
+                    val yaw = targetYaw.toDoubleOrNull() ?: 0.0
+                    onDispatch(x, y, yaw, "Custom Pose")
+                },
+                text = "Dispatch Target Pose",
+                enabled = isConnected
+            )
+        }
+    }
+}
+
+// ================= SETTINGS SCREEN (FULL DARK THEME) =================
 @Composable
 fun SettingsScreen(
     ipAddress: String,
@@ -307,151 +514,42 @@ fun SettingsScreen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Section 1: Connection Config
-        CardStyled(title = "Robot Bridge Connection") {
+        DarkCardStyled(title = "DIO Bridge Connection") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextFieldStyled(
-                    value = ipAddress,
-                    onValueChange = onIpChange,
-                    label = "IP Address",
-                    modifier = Modifier.weight(2f)
-                )
-                OutlinedTextFieldStyled(
-                    value = port,
-                    onValueChange = onPortChange,
-                    label = "Port",
-                    modifier = Modifier.weight(1f)
-                )
+                DarkOutlinedTextField(value = ipAddress, onValueChange = onIpChange, label = "Robot IP Address", modifier = Modifier.weight(2f))
+                DarkOutlinedTextField(value = port, onValueChange = onPortChange, label = "Port", modifier = Modifier.weight(1f))
             }
-            Spacer(modifier = Modifier.height(20.dp))
-            ButtonPrimaryStyled(
+            Spacer(modifier = Modifier.height(16.dp))
+            DarkPrimaryButton(
                 onClick = onConnectClick,
                 text = when {
-                    isConnecting -> "Connecting..."
-                    isConnected -> "Disconnect Bridge"
-                    else -> "Connect Bridge"
+                    isConnecting -> "Connecting to DIO Robot..."
+                    isConnected -> "Disconnect DIO Bridge"
+                    else -> "Connect to DIO Robot"
                 },
-                color = if (isConnected) Color(0xFFDC2626) else MaterialTheme.colorScheme.primary,
+                color = if (isConnected) Color(0xFFDC2626) else Color(0xFF0284C7),
                 enabled = !isConnecting
             )
         }
 
-        // Section 2: General Robot Parameters
-        CardStyled(title = "ROS 2 Environment Config") {
-            Text("Default Frame ID: map", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+        DarkCardStyled(title = "DIO System Architecture") {
+            Text("Default Frame ID: map", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xFFCBD5E1))
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Teleop Topic: /cmd_vel", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Text("Teleop Topic: /cmd_vel", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xFFCBD5E1))
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Nav Goal Topic: /goal_pose", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Text("Nav Goal Topic: /goal_pose", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xFFCBD5E1))
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Camera Feed Port: 8080 (web_video_server)", fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text("Camera Topic: /camera/camera_sensor/image_raw", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Text("Camera Feed Port: 8080 (web_video_server)", fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Color(0xFFCBD5E1))
         }
     }
 }
 
-// ================= PAGE: NAV2 SCREEN =================
+// ================= REUSABLE DARK THEME COMPONENTS =================
 @Composable
-fun Nav2Screen(
-    targetX: String,
-    onXChange: (String) -> Unit,
-    targetY: String,
-    onYChange: (String) -> Unit,
-    targetYaw: String,
-    onYawChange: (String) -> Unit,
-    isConnected: Boolean,
-    onDispatch: (Double, Double, Double, String) -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        CardStyled(
-            title = "Hospital Destinations",
-            subtitle = "Tap to dispatch automatically"
-        ) {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(220.dp)
-            ) {
-                items(hospitalLocations.keys.toList()) { locName ->
-                    val coords = hospitalLocations[locName]!!
-                    OutlinedButton(
-                        onClick = {
-                            onXChange(coords[0].toString())
-                            onYChange(coords[1].toString())
-                            onYawChange(coords[2].toString())
-                            if (isConnected) {
-                                onDispatch(coords[0], coords[1], coords[2], locName)
-                            }
-                        },
-                        enabled = isConnected,
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Text(
-                            text = locName,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 13.sp
-                        )
-                    }
-                }
-            }
-        }
-
-        CardStyled(
-            title = "Custom Pose Dispatcher",
-            subtitle = "/goal_pose"
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextFieldStyled(
-                    value = targetX,
-                    onValueChange = onXChange,
-                    label = "Target X",
-                    modifier = Modifier.weight(1f)
-                )
-                OutlinedTextFieldStyled(
-                    value = targetY,
-                    onValueChange = onYChange,
-                    label = "Target Y",
-                    modifier = Modifier.weight(1f)
-                )
-                OutlinedTextFieldStyled(
-                    value = targetYaw,
-                    onValueChange = onYawChange,
-                    label = "Yaw (rad)",
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            ButtonPrimaryStyled(
-                onClick = {
-                    val x = targetX.toDoubleOrNull() ?: 0.0
-                    val y = targetY.toDoubleOrNull() ?: 0.0
-                    val yaw = targetYaw.toDoubleOrNull() ?: 0.0
-                    onDispatch(x, y, yaw, "Custom Goal")
-                },
-                text = "Dispatch Custom Pose",
-                enabled = isConnected
-            )
-        }
-    }
-}
-
-// ================= REUSABLE STYLED COMPONENTS =================
-@Composable
-fun CardStyled(
+fun DarkCardStyled(
     title: String,
     subtitle: String? = null,
     content: @Composable ColumnScope.() -> Unit
@@ -459,27 +557,27 @@ fun CardStyled(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            .padding(vertical = 2.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF131C2E)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = title,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 18.sp,
-                color = MaterialTheme.colorScheme.onBackground
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = Color.White
             )
             if (subtitle != null) {
                 Text(
                     text = subtitle,
                     fontSize = 12.sp,
-                    color = Reference_Text_Secondary,
+                    color = Color(0xFF94A3B8),
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
             } else {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
             }
             content()
         }
@@ -487,7 +585,7 @@ fun CardStyled(
 }
 
 @Composable
-fun OutlinedTextFieldStyled(
+fun DarkOutlinedTextField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
@@ -496,24 +594,24 @@ fun OutlinedTextFieldStyled(
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text(label) },
+        label = { Text(label, fontSize = 12.sp, color = Color(0xFF94A3B8)) },
         modifier = modifier,
         singleLine = true,
         colors = OutlinedTextFieldDefaults.colors(
-            unfocusedBorderColor = MaterialTheme.colorScheme.secondaryContainer,
-            focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedLabelColor = Reference_Text_Secondary,
-            unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+            unfocusedBorderColor = Color(0xFF334155),
+            focusedBorderColor = Color(0xFF38BDF8),
+            unfocusedTextColor = Color.White,
+            focusedTextColor = Color.White
         ),
-        shape = MaterialTheme.shapes.medium
+        shape = RoundedCornerShape(14.dp)
     )
 }
 
 @Composable
-fun ButtonPrimaryStyled(
+fun DarkPrimaryButton(
     onClick: () -> Unit,
     text: String,
-    color: Color = MaterialTheme.colorScheme.primary,
+    color: Color = Color(0xFF0284C7),
     enabled: Boolean = true
 ) {
     Button(
@@ -522,11 +620,17 @@ fun ButtonPrimaryStyled(
         enabled = enabled,
         colors = ButtonDefaults.buttonColors(
             containerColor = color,
-            disabledContainerColor = Reference_Text_Secondary.copy(alpha = 0.5f)
+            disabledContainerColor = Color(0xFF334155)
         ),
-        shape = MaterialTheme.shapes.medium,
-        contentPadding = PaddingValues(16.dp)
+        shape = RoundedCornerShape(14.dp),
+        contentPadding = PaddingValues(14.dp)
     ) {
-        Text(text = text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+            Text(text = text, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
+        }
     }
 }

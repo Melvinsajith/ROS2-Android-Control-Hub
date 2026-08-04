@@ -5,6 +5,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
@@ -17,7 +18,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.robotics.ros2controller.ui.theme.Reference_Text_Secondary
 
 @Composable
 fun CameraScreen(
@@ -32,13 +32,17 @@ fun CameraScreen(
     val streamUrl = "http://$ipAddress:$streamPort/stream?topic=$cameraTopic"
 
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF090D16)) // Deep Dark Slate Background
+            .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = MaterialTheme.shapes.large,
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF131C2E)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(
@@ -50,12 +54,13 @@ fun CameraScreen(
                         Text(
                             text = "Live Camera Feed",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp
+                            fontSize = 18.sp,
+                            color = Color.White
                         )
                         Text(
                             text = "Topic: $cameraTopic",
                             fontSize = 12.sp,
-                            color = Reference_Text_Secondary
+                            color = Color(0xFF94A3B8)
                         )
                     }
 
@@ -64,7 +69,7 @@ fun CameraScreen(
                         Icon(
                             imageVector = if (isStreamActive) Icons.Default.Videocam else Icons.Default.VideocamOff,
                             contentDescription = "Toggle Camera",
-                            tint = if (isStreamActive) MaterialTheme.colorScheme.primary else Color.Gray
+                            tint = if (isStreamActive) Color(0xFF38BDF8) else Color(0xFF64748B)
                         )
                     }
                 }
@@ -75,8 +80,8 @@ fun CameraScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(280.dp)
-                        .background(Color.Black, MaterialTheme.shapes.medium),
+                        .height(300.dp)
+                        .background(Color(0xFF0F172A), RoundedCornerShape(16.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     if (isConnected && isStreamActive) {
@@ -106,13 +111,13 @@ fun CameraScreen(
                             Icon(
                                 imageVector = Icons.Default.VideocamOff,
                                 contentDescription = "Camera Off",
-                                tint = Color.DarkGray,
+                                tint = Color(0xFF475569),
                                 modifier = Modifier.size(48.dp)
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = if (!isConnected) "Robot Disconnected" else "Stream Paused",
-                                color = Color.Gray,
+                                color = Color(0xFF94A3B8),
                                 fontSize = 14.sp
                             )
                         }
@@ -124,7 +129,7 @@ fun CameraScreen(
                 Text(
                     text = "Stream Source: $streamUrl",
                     fontSize = 11.sp,
-                    color = Reference_Text_Secondary
+                    color = Color(0xFF64748B)
                 )
             }
         }
