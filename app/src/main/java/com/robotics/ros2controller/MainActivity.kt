@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SportsMotorsports
@@ -30,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.robotics.ros2controller.network.RosbridgeClient
 import com.robotics.ros2controller.ui.screens.AdvancedTeleopScreen
 import com.robotics.ros2controller.ui.screens.CameraScreen
+import com.robotics.ros2controller.ui.screens.UnifiedDashboardScreen
 import com.robotics.ros2controller.ui.theme.ROS2ControllerTheme
 import com.robotics.ros2controller.ui.theme.Reference_HeaderBackground
 import com.robotics.ros2controller.ui.theme.Reference_Text_OnHeader
@@ -58,7 +60,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// Hospital Locations Dictionary[cite: 9]
+// Hospital Locations Dictionary
 val hospitalLocations = mapOf(
     "Pharmacy" to listOf(-13.77, -5.23, 0.0),
     "ICU Ward" to listOf(2.00, -5.61, 0.0),
@@ -71,6 +73,7 @@ val hospitalLocations = mapOf(
 
 // Navigation Tab Definitions
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
+    object Dashboard : Screen("dashboard", "Dashboard", Icons.Default.Dashboard)
     object Teleop : Screen("teleop", "Teleop", Icons.Default.SportsMotorsports)
     object Camera : Screen("camera", "Camera", Icons.Default.Videocam)
     object Nav2 : Screen("nav2", "Nav2 Goal", Icons.Default.Navigation)
@@ -88,16 +91,13 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
     var isConnecting by remember { mutableStateOf(false) }
     var statusMessage by remember { mutableStateOf("Ready") }
 
-    // Dialog state for Connection Popup (DISABLED / COMMENTED OUT)
-    // var showConnectionDialog by remember { mutableStateOf(false) }
-
     // Nav2 Settings
     var targetX by remember { mutableStateOf("1.0") }
     var targetY by remember { mutableStateOf("0.5") }
     var targetYaw by remember { mutableStateOf("0.0") }
 
-    // Selected Page State
-    var currentScreen by remember { mutableStateOf<Screen>(Screen.Settings) }
+    // Selected Page State (Defaults to Tactical Dashboard)
+    var currentScreen by remember { mutableStateOf<Screen>(Screen.Dashboard) }
 
     LaunchedEffect(Unit) {
         rosClient.onConnectionStateChanged = { status, msg ->
@@ -108,15 +108,7 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
         }
     }
 
-    // Direct Navigation without popup enforcement
     fun navigateTo(screen: Screen) {
-        /*
-        if (!isConnected && screen != Screen.Settings) {
-            showConnectionDialog = true
-        } else {
-            currentScreen = screen
-        }
-        */
         currentScreen = screen
     }
 
@@ -126,7 +118,13 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
                 containerColor = MaterialTheme.colorScheme.surface,
                 tonalElevation = 8.dp
             ) {
-                val items = listOf(Screen.Teleop, Screen.Camera, Screen.Nav2, Screen.Settings)
+                val items = listOf(
+                    Screen.Dashboard,
+                    Screen.Teleop,
+                    Screen.Camera,
+                    Screen.Nav2,
+                    Screen.Settings
+                )
                 items.forEach { screen ->
                     NavigationBarItem(
                         icon = { Icon(screen.icon, contentDescription = screen.title) },
@@ -194,9 +192,7 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
                 // CONNECTION BADGE
                 InputChip(
                     selected = true,
-                    onClick = {
-                        // if (!isConnected) showConnectionDialog = true
-                    },
+                    onClick = {},
                     label = {
                         Text(
                             text = when {
@@ -226,6 +222,27 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
                     .padding(16.dp)
             ) {
                 when (currentScreen) {
+                    is Screen.Dashboard -> UnifiedDashboardScreen(
+                        ipAddress = ipAddress.trim(),
+                        isConnected = isConnected,
+                        onSendCmdVel = { linX, angZ -> rosClient.sendCmdVel(linX, angZ) },
+                        onTriggerEStop = { rosClient.triggerEmergencyStop() },
+                        batteryPercent = rosClient.batteryPercentage,
+                        robotX = rosClient.robotX,
+                        robotY = rosClient.robotY,
+                        robotYaw = rosClient.robotYaw,
+                        globalPath = rosClient.globalPath,
+                        mapWidth = rosClient.mapWidth,
+                        mapHeight = rosClient.mapHeight,
+                        mapData = rosClient.mapData,
+                        mapResolution = rosClient.mapResolution,
+                        mapOriginX = rosClient.mapOriginX,
+                        mapOriginY = rosClient.mapOriginY,
+                        taskStatus = rosClient.taskStatus,
+                        destinationName = rosClient.currentDestinationName,
+                        cameraTopic = "/camera/camera_sensor/image_raw"
+                    )
+
                     is Screen.Teleop -> AdvancedTeleopScreen(
                         isConnected = isConnected,
                         onSendCmdVel = { linX, angZ -> rosClient.sendCmdVel(linX, angZ) },
@@ -234,7 +251,8 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
 
                     is Screen.Camera -> CameraScreen(
                         ipAddress = ipAddress.trim(),
-                        isConnected = isConnected
+                        isConnected = isConnected,
+                        cameraTopic = "/camera/camera_sensor/image_raw"
                     )
 
                     is Screen.Nav2 -> Nav2Screen(
@@ -245,8 +263,8 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
                         targetYaw = targetYaw,
                         onYawChange = { targetYaw = it },
                         isConnected = isConnected,
-                        onDispatch = { xVal, yVal, yawVal ->
-                            rosClient.sendNav2Goal(xVal, yVal, yawVal)
+                        onDispatch = { xVal, yVal, yawVal, destName ->
+                            rosClient.sendNav2Goal(xVal, yVal, yawVal, destName)
                         }
                     )
 
@@ -270,56 +288,6 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
             }
         }
     }
-
-    /*
-    // ================= DISCONNECTED POPUP DIALOG (DISABLED) =================
-    if (showConnectionDialog) {
-        AlertDialog(
-            onDismissRequest = { showConnectionDialog = false },
-            title = { Text("Robot Disconnected", fontWeight = FontWeight.Bold) },
-            text = {
-                Column {
-                    Text("Please connect to Rosbridge before operating the robot.")
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextFieldStyled(
-                        value = ipAddress,
-                        onValueChange = { ipAddress = it },
-                        label = "IP Address",
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextFieldStyled(
-                        value = port,
-                        onValueChange = { port = it },
-                        label = "Port",
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showConnectionDialog = false
-                        isConnecting = true
-                        rosClient.connect(ipAddress.trim(), port.trim())
-                    }
-                ) {
-                    Text("Connect Now")
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        showConnectionDialog = false
-                        currentScreen = Screen.Settings
-                    }
-                ) {
-                    Text("Go to Settings")
-                }
-            }
-        )
-    }
-    */
 }
 
 // ================= PAGE: SETTINGS SCREEN =================
@@ -380,6 +348,8 @@ fun SettingsScreen(
             Text("Nav Goal Topic: /goal_pose", fontSize = 14.sp, fontWeight = FontWeight.Medium)
             Spacer(modifier = Modifier.height(4.dp))
             Text("Camera Feed Port: 8080 (web_video_server)", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Camera Topic: /camera/camera_sensor/image_raw", fontSize = 14.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -394,7 +364,7 @@ fun Nav2Screen(
     targetYaw: String,
     onYawChange: (String) -> Unit,
     isConnected: Boolean,
-    onDispatch: (Double, Double, Double) -> Unit
+    onDispatch: (Double, Double, Double, String) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -422,7 +392,7 @@ fun Nav2Screen(
                             onYChange(coords[1].toString())
                             onYawChange(coords[2].toString())
                             if (isConnected) {
-                                onDispatch(coords[0], coords[1], coords[2])
+                                onDispatch(coords[0], coords[1], coords[2], locName)
                             }
                         },
                         enabled = isConnected,
@@ -470,7 +440,7 @@ fun Nav2Screen(
                     val x = targetX.toDoubleOrNull() ?: 0.0
                     val y = targetY.toDoubleOrNull() ?: 0.0
                     val yaw = targetYaw.toDoubleOrNull() ?: 0.0
-                    onDispatch(x, y, yaw)
+                    onDispatch(x, y, yaw, "Custom Goal")
                 },
                 text = "Dispatch Custom Pose",
                 enabled = isConnected
