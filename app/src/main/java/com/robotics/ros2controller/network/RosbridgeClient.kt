@@ -22,7 +22,7 @@ class RosbridgeClient {
     var batteryPercentage by mutableIntStateOf(50)
         private set
 
-    // --- Robot Pose States (/amcl_pose) ---
+    // --- Robot Pose States (/pose & /amcl_pose) ---
     var robotX by mutableDoubleStateOf(0.0)
         private set
     var robotY by mutableDoubleStateOf(0.0)
@@ -54,12 +54,12 @@ class RosbridgeClient {
     var currentDestinationName by mutableStateOf("")
         private set
 
-    // OkHttp Client configured with strict connection timeouts and heartbeat ping
+    // OkHttp Client configured with relaxed timeouts to avoid dropouts during heavy map streaming
     private val client = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(5, TimeUnit.SECONDS)
-        .writeTimeout(5, TimeUnit.SECONDS)
-        .pingInterval(3, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
+        .writeTimeout(10, TimeUnit.SECONDS)
+        .pingInterval(15, TimeUnit.SECONDS) // Prevents ping/pong timeout drops
         .build()
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -151,14 +151,22 @@ class RosbridgeClient {
         webSocket?.send(batterySub.toString())
 
         // 2. Subscribe to AMCL Robot Pose topic
-        val poseSub = JSONObject().apply {
+        val amclPoseSub = JSONObject().apply {
             put("op", "subscribe")
             put("topic", "/amcl_pose")
             put("type", "geometry_msgs/msg/PoseWithCovarianceStamped")
         }
-        webSocket?.send(poseSub.toString())
+        webSocket?.send(amclPoseSub.toString())
 
-        // 3. Subscribe to Nav2 Planned Path topic
+        // 3. Subscribe to SLAM Toolbox Localization Pose topic
+        val slamPoseSub = JSONObject().apply {
+            put("op", "subscribe")
+            put("topic", "/pose")
+            put("type", "geometry_msgs/msg/PoseWithCovarianceStamped")
+        }
+        webSocket?.send(slamPoseSub.toString())
+
+        // 4. Subscribe to Nav2 Planned Path topic
         val pathSub = JSONObject().apply {
             put("op", "subscribe")
             put("topic", "/plan")
@@ -166,7 +174,7 @@ class RosbridgeClient {
         }
         webSocket?.send(pathSub.toString())
 
-        // 4. Subscribe to Occupancy Grid Map topic
+        // 5. Subscribe to Occupancy Grid Map topic
         val mapSub = JSONObject().apply {
             put("op", "subscribe")
             put("topic", "/map")
@@ -174,7 +182,7 @@ class RosbridgeClient {
         }
         webSocket?.send(mapSub.toString())
 
-        // 5. Subscribe to Nav2 Action Status feedback
+        // 6. Subscribe to Nav2 Action Status feedback
         val statusSub = JSONObject().apply {
             put("op", "subscribe")
             put("topic", "/navigate_to_pose/_action/status")
@@ -204,28 +212,36 @@ class RosbridgeClient {
                     }
                 }
 
-                "/amcl_pose" -> {
-                    val msg = json.optJSONObject("msg")?.optJSONObject("pose")?.optJSONObject("pose")
+                "/amcl_pose", "/pose" -> {
+                    val msg = json.optJSONObject("msg")
                     if (msg != null) {
-                        val pos = msg.optJSONObject("position")
-                        val ori = msg.optJSONObject("orientation")
+                        val poseObj = msg.optJSONObject("pose")
+                        val finalPose = if (poseObj?.has("pose") == true) {
+                            poseObj.optJSONObject("pose")
+                        } else {
+                            poseObj
+                        }
 
-                        val x = pos?.optDouble("x", 0.0) ?: 0.0
-                        val y = pos?.optDouble("y", 0.0) ?: 0.0
-                        val qx = ori?.optDouble("x", 0.0) ?: 0.0
-                        val qy = ori?.optDouble("y", 0.0) ?: 0.0
-                        val qz = ori?.optDouble("z", 0.0) ?: 0.0
-                        val qw = ori?.optDouble("w", 1.0) ?: 1.0
+                        if (finalPose != null) {
+                            val pos = finalPose.optJSONObject("position")
+                            val ori = finalPose.optJSONObject("orientation")
 
-                        // Full 2D Euler angle conversion for Yaw
-                        val sinyCosp = 2.0 * (qw * qz + qx * qy)
-                        val cosyCosp = 1.0 - 2.0 * (qy * qy + qz * qz)
-                        val yaw = atan2(sinyCosp, cosyCosp)
+                            val x = pos?.optDouble("x", 0.0) ?: 0.0
+                            val y = pos?.optDouble("y", 0.0) ?: 0.0
+                            val qx = ori?.optDouble("x", 0.0) ?: 0.0
+                            val qy = ori?.optDouble("y", 0.0) ?: 0.0
+                            val qz = ori?.optDouble("z", 0.0) ?: 0.0
+                            val qw = ori?.optDouble("w", 1.0) ?: 1.0
 
-                        mainHandler.post {
-                            robotX = x
-                            robotY = y
-                            robotYaw = yaw
+                            val sinyCosp = 2.0 * (qw * qz + qx * qy)
+                            val cosyCosp = 1.0 - 2.0 * (qy * qy + qz * qz)
+                            val yaw = atan2(sinyCosp, cosyCosp)
+
+                            mainHandler.post {
+                                robotX = x
+                                robotY = y
+                                robotYaw = yaw
+                            }
                         }
                     }
                 }
