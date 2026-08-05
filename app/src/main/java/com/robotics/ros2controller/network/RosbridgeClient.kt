@@ -368,11 +368,19 @@ class RosbridgeClient {
         webSocket?.send(msg.toString())
     }
 
-    // Emergency Stop: Send 0 velocity & cancel active Nav2 goals
+    // Emergency Stop: Instantly halts motion, clears path line, & cancels Nav2 action
     fun triggerEmergencyStop() {
-        sendCmdVel(0.0, 0.0)
-        taskStatus = "EMERGENCY STOP"
+        mainHandler.post {
+            taskStatus = "EMERGENCY STOP"
+            globalPath = emptyList() // Clear local path line on canvas immediately
+        }
 
+        // Send a rapid burst of 0 velocities to immediately halt hardware execution
+        repeat(3) {
+            sendCmdVel(0.0, 0.0)
+        }
+
+        // Call Nav2 Goal Cancel Service
         val cancelGoalMsg = JSONObject().apply {
             put("op", "call_service")
             put("service", "/navigate_to_pose/_action/cancel_goal")
@@ -384,6 +392,7 @@ class RosbridgeClient {
                 })
             })
         }
+
         try {
             webSocket?.send(cancelGoalMsg.toString())
         } catch (e: Exception) {

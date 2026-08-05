@@ -5,6 +5,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -37,6 +38,11 @@ import com.robotics.ros2controller.ui.screens.CameraScreen
 import com.robotics.ros2controller.ui.screens.UnifiedDashboardScreen
 import com.robotics.ros2controller.ui.theme.ROS2ControllerTheme
 
+// --- Modern Glassmorphic Soft Red/Rose Palette ---
+val ModernRoseRed = Color(0xFFF43F5E)          // Lighter modern neon rose accent
+val SoftRoseBanner = Color(0x33F43F5E)          // Glassmorphic translucent red background
+val RoseBorder = Color(0xFFFB7185)              // Subtle luminous border outline
+
 class MainActivity : ComponentActivity() {
     private val rosClient = RosbridgeClient()
 
@@ -46,7 +52,7 @@ class MainActivity : ComponentActivity() {
             ROS2ControllerTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = Color(0xFF090D16) // Deep Dark Outer Slate Background
+                    color = Color(0xFF090D16)
                 ) {
                     ROS2AppNavigation(rosClient)
                 }
@@ -155,7 +161,7 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // ================= DARK TOP VIOLET/BLUE HEADER CARD =================
+            // ================= TOP HEADER CARD =================
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -189,27 +195,28 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
                             )
                         }
 
-                        // Quick E-Stop Button
+                        // Glassmorphic Soft E-Stop Button
                         IconButton(
                             onClick = {
                                 rosClient.triggerEmergencyStop()
                                 Toast.makeText(context, "🚨 EMERGENCY STOP!", Toast.LENGTH_LONG).show()
                             },
                             modifier = Modifier
-                                .background(Color(0xFFDC2626), RoundedCornerShape(12.dp))
+                                .background(SoftRoseBanner, RoundedCornerShape(12.dp))
+                                .border(1.dp, RoseBorder.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
                                 .size(40.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = "E-Stop",
-                                tint = Color.White
+                                tint = ModernRoseRed
                             )
                         }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Status Badge
+                    // Connection Status Badge
                     AssistChip(
                         onClick = {},
                         label = {
@@ -219,19 +226,30 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
                                     isConnected -> "SYSTEM CONNECTED"
                                     else -> "BRIDGE DISCONNECTED"
                                 },
-                                color = Color.White,
+                                color = when {
+                                    isConnecting -> Color(0xFFFBBF24)
+                                    isConnected -> Color(0xFF34D399)
+                                    else -> ModernRoseRed
+                                },
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp
                             )
                         },
                         colors = AssistChipDefaults.assistChipColors(
                             containerColor = when {
-                                isConnecting -> Color(0xFFD97706)
-                                isConnected -> Color(0xFF10B981)
-                                else -> Color(0xFFDC2626)
+                                isConnecting -> Color(0x33F59E0B)
+                                isConnected -> Color(0x3310B981)
+                                else -> SoftRoseBanner
                             }
                         ),
-                        border = null,
+                        border = AssistChipDefaults.assistChipBorder(
+                            enabled = true,
+                            borderColor = when {
+                                isConnecting -> Color(0xFFF59E0B)
+                                isConnected -> Color(0xFF10B981)
+                                else -> RoseBorder.copy(alpha = 0.5f)
+                            }
+                        ),
                         shape = RoundedCornerShape(12.dp)
                     )
                 }
@@ -324,7 +342,7 @@ fun ROS2AppNavigation(rosClient: RosbridgeClient) {
     }
 }
 
-// ================= NAV2 GOAL SCREEN (FULL DARK THEME) =================
+// ================= NAV2 GOAL SCREEN =================
 @Composable
 fun Nav2Screen(
     targetX: String,
@@ -356,17 +374,29 @@ fun Nav2Screen(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Mission Task Status Banner
+        // Mission Task Status Banner with Glassmorphic Translucent Red Tint
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    width = 1.dp,
+                    color = when {
+                        taskStatus.contains("Reached") -> Color(0xFF10B981)
+                        taskStatus.contains("En Route") || taskStatus.contains("Received") -> Color(0xFF38BDF8)
+                        taskStatus.contains("Dispatched") -> Color(0xFFF59E0B)
+                        taskStatus.contains("STOP") || taskStatus.contains("Aborted") -> RoseBorder
+                        else -> Color(0xFF334155)
+                    },
+                    shape = RoundedCornerShape(18.dp)
+                ),
             shape = RoundedCornerShape(18.dp),
             colors = CardDefaults.cardColors(
                 containerColor = when {
-                    taskStatus.contains("Reached") -> Color(0xFF10B981)
-                    taskStatus.contains("En Route") || taskStatus.contains("Received") -> Color(0xFF0284C7)
-                    taskStatus.contains("Dispatched") -> Color(0xFFD97706)
-                    taskStatus.contains("STOP") || taskStatus.contains("Aborted") -> Color(0xFFDC2626)
-                    else -> Color(0xFF1E293B)
+                    taskStatus.contains("Reached") -> Color(0x3310B981)
+                    taskStatus.contains("En Route") || taskStatus.contains("Received") -> Color(0x330284C7)
+                    taskStatus.contains("Dispatched") -> Color(0x33D97706)
+                    taskStatus.contains("STOP") || taskStatus.contains("Aborted") -> SoftRoseBanner
+                    else -> Color(0xFF131C2E)
                 }
             )
         ) {
@@ -386,11 +416,16 @@ fun Nav2Screen(
                     )
                     Text(
                         text = "Status: $taskStatus",
-                        color = Color.White.copy(alpha = 0.9f),
-                        fontSize = 12.sp
+                        color = if (taskStatus.contains("STOP")) ModernRoseRed else Color.White.copy(alpha = 0.9f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
-                Icon(Icons.Default.Navigation, contentDescription = null, tint = Color.White)
+                Icon(
+                    Icons.Default.Navigation,
+                    contentDescription = null,
+                    tint = if (taskStatus.contains("STOP")) ModernRoseRed else Color.White
+                )
             }
         }
 
@@ -497,7 +532,7 @@ fun Nav2Screen(
     }
 }
 
-// ================= SETTINGS SCREEN (FULL DARK THEME) =================
+// ================= SETTINGS SCREEN =================
 @Composable
 fun SettingsScreen(
     ipAddress: String,
@@ -530,7 +565,7 @@ fun SettingsScreen(
                     isConnected -> "Disconnect DIO Bridge"
                     else -> "Connect to DIO Robot"
                 },
-                color = if (isConnected) Color(0xFFDC2626) else Color(0xFF0284C7),
+                color = if (isConnected) ModernRoseRed else Color(0xFF0284C7),
                 enabled = !isConnecting
             )
         }
