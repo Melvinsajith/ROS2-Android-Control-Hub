@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.robotics.ros2controller.data.RobotConfigHolder
 import okhttp3.*
 import org.json.JSONArray
 import org.json.JSONObject
@@ -15,11 +16,11 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 
-class RosbridgeClient {
+class RosbridgeClient(val config: RobotConfigHolder) {
     private var webSocket: WebSocket? = null
 
-    // --- Dynamic Battery Percentage ---
-    var batteryPercentage by mutableIntStateOf(50)
+    // --- Dynamic Battery Percentage (null indicates no data received or disconnected) ---
+    var batteryPercentage by mutableStateOf<Int?>(null)
         private set
 
     // --- Robot Pose States (/pose & /amcl_pose) ---
@@ -110,7 +111,7 @@ class RosbridgeClient {
             e.printStackTrace()
         } finally {
             webSocket = null
-            batteryPercentage = 50
+            batteryPercentage = null // Reset to null on disconnect
             globalPath = emptyList()
             mapData = null
             taskStatus = "Idle"
@@ -128,66 +129,42 @@ class RosbridgeClient {
     private fun advertiseTopics() {
         val cmdVelAdv = JSONObject().apply {
             put("op", "advertise")
-            put("topic", "/cmd_vel")
+            put("topic", config.cmdVelTopic)
             put("type", "geometry_msgs/msg/Twist")
         }
         webSocket?.send(cmdVelAdv.toString())
 
         val goalPoseAdv = JSONObject().apply {
             put("op", "advertise")
-            put("topic", "/goal_pose")
+            put("topic", config.goalPoseTopic)
             put("type", "geometry_msgs/msg/PoseStamped")
         }
         webSocket?.send(goalPoseAdv.toString())
     }
 
     private fun subscribeTopics() {
-        // 1. Subscribe to Battery State topic
-        val batterySub = JSONObject().apply {
-            put("op", "subscribe")
-            put("topic", "/battery_state")
-            put("type", "sensor_msgs/msg/BatteryState")
-        }
-        webSocket?.send(batterySub.toString())
+        subscribeSingleTopic(config.batteryTopic, "sensor_msgs/msg/BatteryState")
+        subscribeSingleTopic(config.amclPoseTopic, "geometry_msgs/msg/PoseWithCovarianceStamped")
+        subscribeSingleTopic(config.slamPoseTopic, "geometry_msgs/msg/PoseWithCovarianceStamped")
+        subscribeSingleTopic(config.planTopic, "nav_msgs/msg/Path")
+        subscribeSingleTopic(config.mapTopic, "nav_msgs/msg/OccupancyGrid")
 
-        // 2. Subscribe to AMCL Robot Pose topic
-        val amclPoseSub = JSONObject().apply {
-            put("op", "subscribe")
-            put("topic", "/amcl_pose")
-            put("type", "geometry_msgs/msg/PoseWithCovarianceStamped")
-        }
-        webSocket?.send(amclPoseSub.toString())
-
-        // 3. Subscribe to SLAM Toolbox Localization Pose topic
-        val slamPoseSub = JSONObject().apply {
-            put("op", "subscribe")
-            put("topic", "/pose")
-            put("type", "geometry_msgs/msg/PoseWithCovarianceStamped")
-        }
-        webSocket?.send(slamPoseSub.toString())
-
-        // 4. Subscribe to Nav2 Planned Path topic
-        val pathSub = JSONObject().apply {
-            put("op", "subscribe")
-            put("topic", "/plan")
-            put("type", "nav_msgs/msg/Path")
-        }
-        webSocket?.send(pathSub.toString())
-
-        // 5. Subscribe to Occupancy Grid Map topic
-        val mapSub = JSONObject().apply {
-            put("op", "subscribe")
-            put("topic", "/map")
-            put("type", "nav_msgs/msg/OccupancyGrid")
-        }
-        webSocket?.send(mapSub.toString())
-
-        // 6. Subscribe to Nav2 Action Status feedback
+        // Nav2 Action Status feedback
         val statusSub = JSONObject().apply {
             put("op", "subscribe")
             put("topic", "/navigate_to_pose/_action/status")
         }
         webSocket?.send(statusSub.toString())
+    }
+
+    private fun subscribeSingleTopic(topicName: String, topicType: String) {
+        if (topicName.isBlank()) return
+        val sub = JSONObject().apply {
+            put("op", "subscribe")
+            put("topic", topicName)
+            put("type", topicType)
+        }
+        webSocket?.send(sub.toString())
     }
 
     private fun handleIncomingMessage(jsonStr: String) {
@@ -196,7 +173,7 @@ class RosbridgeClient {
             val topic = json.optString("topic")
 
             when (topic) {
-                "/battery_state" -> {
+                config.batteryTopic -> {
                     val msg = json.optJSONObject("msg")
                     if (msg != null) {
                         val rawPercentage = msg.optDouble("percentage", 0.5)
@@ -212,7 +189,7 @@ class RosbridgeClient {
                     }
                 }
 
-                "/amcl_pose", "/pose" -> {
+                config.amclPoseTopic, config.slamPoseTopic -> {
                     val msg = json.optJSONObject("msg")
                     if (msg != null) {
                         val poseObj = msg.optJSONObject("pose")
@@ -246,7 +223,7 @@ class RosbridgeClient {
                     }
                 }
 
-                "/plan" -> {
+                config.planTopic -> {
                     val msg = json.optJSONObject("msg")
                     val poses = msg?.optJSONArray("poses")
                     if (poses != null) {
@@ -263,7 +240,7 @@ class RosbridgeClient {
                     }
                 }
 
-                "/map" -> {
+                config.mapTopic -> {
                     val msg = json.optJSONObject("msg")
                     val info = msg?.optJSONObject("info")
                     val dataArray = msg?.optJSONArray("data")
@@ -318,7 +295,7 @@ class RosbridgeClient {
     fun sendCmdVel(linearX: Double, angularZ: Double) {
         val msg = JSONObject().apply {
             put("op", "publish")
-            put("topic", "/cmd_vel")
+            put("topic", config.cmdVelTopic)
             put("msg", JSONObject().apply {
                 put("linear", JSONObject().apply {
                     put("x", linearX)
@@ -344,11 +321,11 @@ class RosbridgeClient {
 
         val msg = JSONObject().apply {
             put("op", "publish")
-            put("topic", "/goal_pose")
+            put("topic", config.goalPoseTopic)
             put("type", "geometry_msgs/msg/PoseStamped")
             put("msg", JSONObject().apply {
                 put("header", JSONObject().apply {
-                    put("frame_id", "map")
+                    put("frame_id", config.globalFrameId)
                 })
                 put("pose", JSONObject().apply {
                     put("position", JSONObject().apply {
